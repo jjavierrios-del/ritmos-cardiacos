@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0b0f0c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Ritmos">
+<link rel="apple-touch-icon" href="icon-180.png">
+<title>Simulador de ritmos cardíacos</title>
+<style>
+:root{--tp:#1f1f1d;--ts:#5f5e5a;--s1:#f1efe8;--bd:#d3d1c7;--bds:#b4b2a9;--ba:#e6f1fb;--ta:#0c447c;--bda:#378add;--ok:#27500a;--bg:#ffffff;--r:8px}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--tp:#f1efe8;--ts:#b4b2a9;--s1:#2c2c2a;--bd:#444441;--bds:#5f5e5a;--ba:#0c447c;--ta:#b5d4f4;--bda:#85b7eb;--ok:#97c459;--bg:#1a1a18;color-scheme:dark}}
+:root[data-theme="dark"]{--tp:#f1efe8;--ts:#b4b2a9;--s1:#2c2c2a;--bd:#444441;--bds:#5f5e5a;--ba:#0c447c;--ta:#b5d4f4;--bda:#85b7eb;--ok:#97c459;--bg:#1a1a18;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);background:var(--bg);color:var(--tp);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:720px;margin:0 auto;padding-block:16px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1{font-size:22px;font-weight:500;margin:0 0 12px;text-wrap:balance}
+.lbl{font-size:13px;color:var(--ts);margin:0}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 14px}
+button{font:inherit;color:var(--tp);background:transparent;border:0.5px solid var(--bds);border-radius:var(--r);padding:7px 12px;min-height:38px;cursor:pointer}
+button:hover{background:var(--s1)}
+button:focus-visible{outline:2px solid var(--bda);outline-offset:2px}
+.chip{font-size:14px;padding:6px 10px}
+.tg.on{background:var(--ba);color:var(--ta);border-color:var(--bda)}
+.chip.on{background:var(--ba);color:var(--ta);border-color:var(--bda)}
+.mon{background:#0b0f0c;border-radius:12px;padding:6px}
+canvas{display:block;width:100%;height:190px}
+.k{font-size:12px;color:var(--ts)}
+.row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:10px 0}
+.met{background:var(--s1);border-radius:var(--r);padding:10px 12px}
+.met p{margin:0}
+.v{font-size:22px;font-weight:500;font-variant-numeric:tabular-nums}
+.ctl{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 4px}
+</style>
+</head>
+<body>
+<main>
+<h1>Simulador de ritmos cardíacos</h1>
+<p class="lbl">Ritmos con pulso</p>
+<div class="chips" id="c1"></div>
+<p class="lbl">Parada cardíaca</p>
+<div class="chips" id="c2"></div>
+<div class="mon"><canvas id="cv"></canvas></div>
+<p class="k" style="margin:6px 0 8px">25 mm/s · 6 s = 30 cuadros grandes</p>
+<p id="nm" style="font-size:18px;font-weight:500;margin:0 0 2px"></p>
+<p id="ky" style="font-size:15px;color:var(--ts);margin:0;min-height:24px"></p>
+<div class="row">
+<div class="met"><p class="k">Frecuencia ventricular (lpm)</p><p class="v" id="fv"></p></div>
+<div class="met"><p class="k">Frecuencia auricular (lpm)</p><p class="v" id="fa"></p></div>
+</div>
+<p id="sh" style="font-size:15px;margin:0;min-height:22px"></p>
+<p id="sy" style="font-size:15px;color:var(--ts);margin:0;min-height:22px"></p>
+<div class="ctl">
+<button id="bp">Pausar</button>
+<button id="bx">Modo examen</button>
+<button id="br" style="display:none">Revelar</button>
+<button id="bs" class="tg">Sincronizar</button>
+<button id="bn">Aleatorio</button>
+</div>
+<p id="fb" style="font-size:15px;margin:4px 0 0;min-height:24px"></p>
+</main>
+<script>
+var rnd=Math.random;
+var ev=[],T=0,ST=0,paused=false,exam=false,revealed=false,cur=null,sched=null,last=0;
+var buf=new Float32Array(600);
+var marks=[],sync=false;
+function reg(rate,hasP,pr,ta){var nx=ST+0.2;return function(up){while(nx<up){var p=60/rate*(1+0.03*(rnd()-0.5));var q=nx+(hasP?pr:0);marks.push(q);if(hasP)ev.push({t:nx,k:'P'});ev.push({t:q,k:'Q'});ev.push({t:q+Math.min(0.26,p*0.42),k:'T',a:ta||1});nx+=p}}}
+function fa(){var nx=ST+0.2;return function(up){while(nx<up){var p=0.35+rnd()*0.5;marks.push(nx);ev.push({t:nx,k:'Q'});ev.push({t:nx+Math.min(0.22,p*0.5),k:'T',a:0.6});nx+=p}}}
+function flu(n){var nx=ST+0.3;return function(up){while(nx<up){marks.push(nx);ev.push({t:nx,k:'Q'});ev.push({t:nx+0.15,k:'T',a:0.4});nx+=0.2*n}}}
+function av(per,rule){var nx=ST+0.2,i=0;return function(up){while(nx<up){ev.push({t:nx,k:'P'});var r=rule(i);if(r!==null){marks.push(nx+r);ev.push({t:nx+r,k:'Q'});ev.push({t:nx+r+0.26,k:'T'})}nx+=per;i++}}}
+function esc(per){var nx=ST+0.4;return function(up){while(nx<up){marks.push(nx);ev.push({t:nx,k:'W'});ev.push({t:nx+0.3,k:'V'});nx+=per}}}
+function both(a,b){return function(up){a(up);b(up)}}
+function none(){return function(){}}
+function pace(rate){var nx=ST+0.3;return function(up){while(nx<up){ev.push({t:nx,k:'S'});ev.push({t:nx+0.05,k:'W'});ev.push({t:nx+0.35,k:'V'});marks.push(nx+0.05);nx+=60/rate}}}
+function vtm(){var nx=0;return function(up){while(nx<up){marks.push(nx+0.0833);nx+=1/3}}}
+var R=[
+{id:'sin',g:1,s:'Sinusal',n:'Ritmo sinusal',fv:'75',fa:'75',k:'P antes de cada QRS, regular.',mk:function(){return reg(75,true,0.16)}},
+{id:'bra',g:1,s:'Bradicardia',n:'Bradicardia sinusal',fv:'45',fa:'45',k:'Sinusal con frecuencia menor de 60.',mk:function(){return reg(45,true,0.16)}},
+{id:'tac',g:1,s:'Taquicardia',n:'Taquicardia sinusal',fv:'120',fa:'120',k:'Sinusal con frecuencia mayor de 100.',mk:function(){return reg(120,true,0.14)}},
+{id:'tsv',g:1,s:'TSV',n:'Taquicardia supraventricular',fv:'180',fa:'No visible',k:'Regular, QRS estrecho, sin P visibles.',mk:function(){return reg(180,false,0,0.5)}},
+{id:'fa',g:1,s:'FA',n:'Fibrilación auricular',fv:'≈100, irregular',fa:'No medible',k:'Irregularmente irregular, sin ondas P.',mk:fa},
+{id:'fl2',g:1,s:'Flutter 2:1',n:'Flutter auricular 2:1',fv:'150',fa:'300',k:'Dientes de sierra; conduce 1 de cada 2.',mk:function(){return flu(2)}},
+{id:'fl4',g:1,s:'Flutter 4:1',n:'Flutter auricular 4:1',fv:'75',fa:'300',k:'Dientes de sierra; conduce 1 de cada 4.',mk:function(){return flu(4)}},
+{id:'av1',g:1,s:'BAV 1.º',n:'Bloqueo AV de 1.er grado',fv:'75',fa:'75',k:'PR mayor de 200 ms; todas las P conducen.',mk:function(){return av(0.8,function(){return 0.34})}},
+{id:'mo1',g:1,s:'Mobitz I',n:'Bloqueo AV de 2.º grado Mobitz I',fv:'60',fa:'80',k:'El PR se alarga hasta que falla un QRS.',mk:function(){return av(0.75,function(i){return [0.18,0.26,0.34,null][i%4]})}},
+{id:'mo2',g:1,s:'Mobitz II',n:'Bloqueo AV de 2.º grado Mobitz II',fv:'53',fa:'70',k:'PR fijo y un QRS cae de golpe.',mk:function(){return av(0.85,function(i){return i%4==3?null:0.2})}},
+{id:'bav3',g:1,s:'BAV completo',n:'Bloqueo AV completo',fv:'35',fa:'80',k:'P y QRS disociados; escape lento y ancho.',mk:function(){return both(av(0.75,function(){return null}),esc(1.7))}},
+{id:'mp',g:1,s:'Marcapasos',n:'Bradicardia con marcapasos',fv:'60',fa:'—',k:'Espícula antes de cada QRS ancho: hay captura.',mk:function(){return pace(60)}},
+{id:'vf',g:2,sh:true,s:'FV',n:'Fibrilación ventricular',fv:'—',fa:'—',k:'Caos eléctrico, sin QRS identificables.',mk:none},
+{id:'vt',g:2,sh:true,s:'TV sin pulso',n:'Taquicardia ventricular sin pulso',fv:'180',fa:'—',k:'QRS ancho, regular y rápido.',mk:function(){return vtm()}},
+{id:'asy',g:2,sh:false,s:'Asistolia',n:'Asistolia',fv:'0',fa:'0',k:'Línea casi plana, sin actividad eléctrica.',mk:none},
+{id:'pea',g:2,sh:false,s:'AESP',n:'AESP',fv:'40',fa:'—',k:'Complejos organizados, pero sin pulso.',mk:function(){return esc(1.5)}}
+];
+function gs(x){return Math.exp(-x*x)}
+function base(t){var id=cur.id;
+if(id=='fa')return 0.03*Math.sin(37.7*t+0.4)+0.022*Math.sin(54.7*t+1.3)+0.018*Math.sin(71*t+2.1)+0.012*Math.sin(2.1*t);
+if(id=='fl2'||id=='fl4'){var ph=(t%0.2)/0.2;return 0.12*(ph<0.85?1-2*ph/0.85:-1+2*(ph-0.85)/0.15)}
+if(id=='vt'){var w=2*Math.PI*3;return 0.85*(Math.sin(w*t)+0.3*Math.sin(2*w*t+0.6))}
+if(id=='vf')return 0.55*(Math.sin(2*Math.PI*4.6*t+1.6*Math.sin(1.9*t))*(0.65+0.35*Math.sin(0.9*t))+0.55*Math.sin(2*Math.PI*7.3*t+Math.sin(3.1*t)));
+if(id=='asy')return 0.01*Math.sin(0.8*t)+0.006*Math.sin(2.3*t);
+return 0}
+function val(t){var v=base(t);for(var i=0;i<ev.length;i++){var e=ev[i],d=t-e.t;if(d<-0.3||d>0.5)continue;
+if(e.k=='P')v+=0.14*gs(d/0.035);
+else if(e.k=='Q')v+=gs(d/0.012)-0.12*gs((d+0.022)/0.01)-0.25*gs((d-0.025)/0.012);
+else if(e.k=='T')v+=(e.a||1)*0.28*gs(d/0.06);
+else if(e.k=='W')v+=0.85*gs(d/0.05)-0.35*gs((d-0.09)/0.06);
+else if(e.k=='V')v+=-0.3*gs(d/0.08);
+else if(e.k=='S'&&d>=0&&d<0.01)v+=1.15}
+return v+(rnd()-0.5)*0.012}
+var cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+var dpr=Math.min(2,window.devicePixelRatio||1);
+function fit(){cv.width=Math.floor((cv.clientWidth||340)*dpr);cv.height=Math.floor(190*dpr)}
+fit();window.addEventListener('resize',fit);
+function draw(){var W=cv.width,H=cv.height;ctx.fillStyle='#0b0f0c';ctx.fillRect(0,0,W,H);
+var bw=W/30;ctx.lineWidth=1;
+for(var i=0;i<=30;i++){ctx.strokeStyle=(i%5==0)?'#24402e':'#16271c';ctx.beginPath();ctx.moveTo(i*bw,0);ctx.lineTo(i*bw,H);ctx.stroke()}
+for(var y=0;y<=H;y+=bw){ctx.strokeStyle='#16271c';ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke()}
+var cur0=(Math.floor(ST*100)-1+600)%600,pen=false,by=H*0.62,gain=H*0.4;
+ctx.strokeStyle='#4ade80';ctx.lineWidth=1.6*dpr;ctx.lineJoin='round';ctx.beginPath();
+for(var j=0;j<600;j++){var rel=(j-cur0+600)%600,x=j*W/599;
+if(isNaN(buf[j])||(rel>0&&rel<=18)){pen=false;continue}
+var yy=by-buf[j]*gain;if(!pen){ctx.moveTo(x,yy);pen=true}else ctx.lineTo(x,yy)}
+ctx.stroke();
+if(sync){ctx.fillStyle='#fde047';for(var m=0;m<marks.length;m++){var mt=marks[m];if(mt>ST||mt<ST-5.8)continue;var ii=Math.floor(mt*100)%600,rl=(ii-cur0+600)%600;if(rl>0&&rl<=18)continue;var vv=buf[ii];if(isNaN(vv))continue;var mx=ii*W/599,my=by-vv*gain-6*dpr;ctx.beginPath();ctx.moveTo(mx-4*dpr,my-9*dpr);ctx.lineTo(mx+4*dpr,my-9*dpr);ctx.lineTo(mx,my);ctx.closePath();ctx.fill()}ctx.font=(12*dpr)+'px sans-serif';ctx.fillText('SYNC',8*dpr,16*dpr)}}
+function frame(ts){var dt=Math.min(0.1,(ts-last)/1000);last=ts;
+if(!paused){T+=dt;while(ST<T){sched(ST+1.2);buf[Math.floor(ST*100)%600]=val(ST);ST+=0.01}
+ev=ev.filter(function(e){return e.t>ST-1});marks=marks.filter(function(m){return m>ST-7})}
+draw();requestAnimationFrame(frame)}
+function hidden(){return exam&&!revealed}
+function info(){var h=hidden();
+document.getElementById('nm').textContent=h?'¿Qué ritmo es?':cur.n;
+document.getElementById('ky').textContent=h?'Mide la frecuencia y busca las ondas P.':cur.k;
+document.getElementById('fv').textContent=h?'?':cur.fv;
+document.getElementById('fa').textContent=h?'?':cur.fa;
+document.getElementById('sh').textContent=(!h&&cur.g==2)?(cur.sh?'Desfibrilable: sí':'Desfibrilable: no'):'';
+document.getElementById('sy').textContent=(!h&&sync)?((cur.id=='vf'||cur.id=='asy')?'El monitor no encuentra ondas R: no se puede sincronizar.':'Marcas sobre cada R: la descarga se libera con el siguiente QRS.'):'';
+document.getElementById('bs').textContent=sync?'Sincronizar: sí':'Sincronizar';document.getElementById('bs').className='tg'+(sync?' on':'');
+document.getElementById('br').style.display=(exam&&!revealed)?'':'none';
+document.getElementById('bx').textContent=exam?'Salir del examen':'Modo examen';
+var cs=document.querySelectorAll('.chip');
+for(var i=0;i<cs.length;i++){cs[i].className='chip'+((!h&&cs[i].dataset.id==cur.id)?' on':'')}}
+function setR(id){cur=R.filter(function(r){return r.id==id})[0];T=0;ST=0;ev=[];marks=[];buf.fill(NaN);sched=cur.mk();info()}
+function build(){R.forEach(function(r){var b=document.createElement('button');b.className='chip';b.textContent=r.s;b.dataset.id=r.id;
+b.onclick=function(){var fb=document.getElementById('fb');
+if(exam&&!revealed){if(r.id==cur.id){revealed=true;fb.style.color='var(--ok)';fb.textContent='Correcto: '+cur.n;info()}else{fb.style.color='var(--ts)';fb.textContent='No es '+r.s+'. Revisa la frecuencia y las P.'}}
+else if(exam){fb.style.color='var(--ts)';fb.textContent='Pulsa Aleatorio para otro ritmo.'}
+else{setR(r.id)}};
+document.getElementById(r.g==1?'c1':'c2').appendChild(b)})}
+document.getElementById('bp').onclick=function(){paused=!paused;this.textContent=paused?'Reanudar':'Pausar'};
+document.getElementById('bx').onclick=function(){exam=!exam;revealed=false;document.getElementById('fb').textContent='';if(exam){setR(R[Math.floor(rnd()*R.length)].id)}else{info()}};
+document.getElementById('bs').onclick=function(){sync=!sync;info()};
+document.getElementById('br').onclick=function(){revealed=true;document.getElementById('fb').textContent='';info()};
+document.getElementById('bn').onclick=function(){var p=R.filter(function(r){return r.id!=cur.id});revealed=false;document.getElementById('fb').textContent='';setR(p[Math.floor(rnd()*p.length)].id)};
+build();setR('sin');requestAnimationFrame(frame);
+if("serviceWorker" in navigator){navigator.serviceWorker.register("sw.js").catch(function(){})}
+</script>
+</body>
+</html>

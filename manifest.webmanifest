@@ -1,0 +1,16 @@
+{
+  "name": "Simulador de ritmos cardíacos",
+  "short_name": "Ritmos",
+  "description": "Monitor de ECG con 16 ritmos, modo examen y sincronización",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0b0f0c",
+  "theme_color": "#0b0f0c",
+  "lang": "es",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
